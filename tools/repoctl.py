@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 
@@ -14,7 +15,18 @@ from aur_repo.targets import determine_targets
 
 
 def _run(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, cwd=cwd, text=True, capture_output=True, check=True)
+    result = subprocess.run(args, cwd=cwd, text=True, capture_output=True, check=False)
+    if result.returncode != 0:
+        print(f"command failed: {shlex.join(args)}", file=sys.stderr)
+        print(f"cwd: {cwd}", file=sys.stderr)
+        if result.stdout:
+            print("stdout:", file=sys.stderr)
+            print(result.stdout, file=sys.stderr, end="" if result.stdout.endswith("\n") else "\n")
+        if result.stderr:
+            print("stderr:", file=sys.stderr)
+            print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n")
+        result.check_returncode()
+    return result
 
 
 def _selected_packages(
