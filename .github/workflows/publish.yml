@@ -1,0 +1,122 @@
+name: Publish to AUR
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Package name or 'all'"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  determine-targets:
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.targets.outputs.packages }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Determine publish targets
+        id: targets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          requested="${{ github.event.inputs.package }}"
+          if [[ -z "${requested}" || "${requested}" == "all" ]]; then
+            packages="$(python tools/repoctl.py targets --mode all --state published --format json)"
+          else
+            packages="$(python tools/repoctl.py targets --mode all --state published --package "${requested}" --format json)"
+          fi
+
+          echo "packages=${packages}" >> "${GITHUB_OUTPUT}"
+
+  sync-generated-files:
+    needs: determine-targets
+    if: needs.determine-targets.outputs.packages != '[]'
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install sync dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          pacman -Syu --noconfirm --needed base-devel git python sudo
+          useradd --create-home builder
+          chown -R builder:builder "${GITHUB_WORKSPACE}"
+
+      - name: Regenerate .SRCINFO and README
+        shell: bash
+        env:
+          TARGET_PACKAGES: ${{ needs.determine-targets.outputs.packages }}
+        run: |
+          set -euo pipefail
+          su - builder -c "
+            cd '${GITHUB_WORKSPACE}'
+            python tools/repoctl.py srcinfo --packages-json '${TARGET_PACKAGES}' --write
+            python tools/repoctl.py readme
+          "
+
+      - name: Commit generated files
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md pkgs/*/.SRCINFO
+          git commit -m "chore: sync generated metadata [skip aur-sync-self]"
+          git push origin HEAD:main
+
+  publish:
+    needs:
+      - determine-targets
+      - sync-generated-files
+    if: needs.determine-targets.outputs.packages != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJson(needs.determine-targets.outputs.packages) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Publish package
+        env:
+          AUR_GIT_USER_NAME: ${{ vars.AUR_GIT_USER_NAME }}
+          AUR_GIT_USER_EMAIL: ${{ vars.AUR_GIT_USER_EMAIL }}
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          AUR_SSH_KNOWN_HOSTS: ${{ vars.AUR_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          python tools/repoctl.py publish --package "${{ matrix.package }}"

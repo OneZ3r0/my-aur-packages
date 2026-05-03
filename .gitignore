@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+
+pkgs/**/src/
+pkgs/**/pkg/
+pkgs/**/*.log
+pkgs/**/*.AppImage
+pkgs/**/*.deb
+pkgs/**/*.rpm
+pkgs/**/*.tar
+pkgs/**/*.tar.*
+pkgs/**/*.zip

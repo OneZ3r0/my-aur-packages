@@ -1,0 +1,14 @@
+[repo]
+title = "my-aur-packages"
+description = "A small monorepo for maintaining AUR packages with GitHub Actions."
+repository_url = "https://github.com/OneZ3r0/my-aur-packages"
+
+[[packages]]
+name = "gaomontablet-m5-driver"
+path = "pkgs/gaomontablet-m5-driver"
+state = "published"
+
+[[packages]]
+name = "yakit-bin"
+path = "pkgs/yakit-bin"
+state = "draft"

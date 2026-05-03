@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  determine-targets:
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.targets.outputs.packages }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Determine target packages
+        id: targets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+
+          packages="$(python tools/repoctl.py targets \
+            --mode changed \
+            --state all \
+            --base "${base}" \
+            --head "${GITHUB_SHA}" \
+            --format json)"
+
+          echo "packages=${packages}" >> "${GITHUB_OUTPUT}"
+
+  validate:
+    needs: determine-targets
+    if: needs.determine-targets.outputs.packages != '[]'
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJson(needs.determine-targets.outputs.packages) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install validation dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          pacman -Syu --noconfirm --needed base-devel git namcap python sudo
+          useradd --create-home builder
+          chown -R builder:builder "${GITHUB_WORKSPACE}"
+
+      - name: Validate package
+        shell: bash
+        env:
+          PACKAGE_NAME: ${{ matrix.package }}
+        run: |
+          set -euo pipefail
+          su - builder -c "
+            cd '${GITHUB_WORKSPACE}'
+            python tools/repoctl.py srcinfo --package '${PACKAGE_NAME}'
+            cd 'pkgs/${PACKAGE_NAME}'
+            makepkg --printsrcinfo >/dev/null
+            namcap PKGBUILD
+          "
