@@ -14,12 +14,12 @@ jobs:
       packages: ${{ steps.targets.outputs.packages }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -56,7 +56,7 @@ jobs:
         package: ${{ fromJson(needs.determine-targets.outputs.packages) }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install validation dependencies
         shell: bash
