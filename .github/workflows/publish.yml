@@ -42,7 +42,7 @@ jobs:
 
           echo "packages=${packages}" >> "${GITHUB_OUTPUT}"
 
-  sync-generated-files:
+  sync-srcinfo:
     needs: determine-targets
     if: needs.determine-targets.outputs.packages != '[]'
     runs-on: ubuntu-latest
@@ -55,7 +55,6 @@ jobs:
           set -euo pipefail
           pacman -Syu --noconfirm --needed base-devel git python sudo
           useradd --create-home builder
-          chown -R builder:builder "${GITHUB_WORKSPACE}"
 
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -63,7 +62,13 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Regenerate .SRCINFO and README
+      - name: Prepare workspace ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          chown -R builder:builder "${GITHUB_WORKSPACE}"
+
+      - name: Regenerate .SRCINFO
         shell: bash
         env:
           TARGET_PACKAGES: ${{ needs.determine-targets.outputs.packages }}
@@ -72,10 +77,9 @@ jobs:
           su - builder -c "
             cd '${GITHUB_WORKSPACE}'
             python tools/repoctl.py srcinfo --packages-json '${TARGET_PACKAGES}' --write
-            python tools/repoctl.py readme
           "
 
-      - name: Commit generated files
+      - name: Commit .SRCINFO
         shell: bash
         run: |
           set -euo pipefail
@@ -84,20 +88,20 @@ jobs:
           git config --global --add safe.directory "${repo_dir}"
           git -C "${repo_dir}" rev-parse --show-toplevel >/dev/null
 
-          if git -C "${repo_dir}" diff --quiet; then
+          git -C "${repo_dir}" config user.name "github-actions[bot]"
+          git -C "${repo_dir}" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "${repo_dir}" add "pkgs/*/.SRCINFO"
+          if git -C "${repo_dir}" diff --cached --quiet; then
             exit 0
           fi
 
-          git -C "${repo_dir}" config user.name "github-actions[bot]"
-          git -C "${repo_dir}" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git -C "${repo_dir}" add README.md "pkgs/*/.SRCINFO"
           git -C "${repo_dir}" commit -m "chore: sync generated metadata [skip aur-sync-self]"
           git -C "${repo_dir}" push origin HEAD:main
 
   publish:
     needs:
       - determine-targets
-      - sync-generated-files
+      - sync-srcinfo
     if: needs.determine-targets.outputs.packages != '[]'
     runs-on: ubuntu-latest
     strategy:
@@ -125,3 +129,42 @@ jobs:
         run: |
           set -euo pipefail
           python tools/repoctl.py publish --package "${{ matrix.package }}"
+
+  sync-readme:
+    needs:
+      - determine-targets
+      - sync-srcinfo
+      - publish
+    if: needs.determine-targets.outputs.packages != '[]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Regenerate README
+        run: |
+          set -euo pipefail
+          python tools/repoctl.py readme
+
+      - name: Commit README
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+
+          git commit -m "chore: sync README package list [skip aur-sync-self]"
+          git push origin HEAD:main
