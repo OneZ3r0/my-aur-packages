@@ -55,9 +55,6 @@ jobs:
       matrix:
         package: ${{ fromJson(needs.determine-targets.outputs.packages) }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
       - name: Install validation dependencies
         shell: bash
         run: |
@@ -65,6 +62,9 @@ jobs:
           pacman -Syu --noconfirm --needed base-devel git namcap python sudo
           useradd --create-home builder
           chown -R builder:builder "${GITHUB_WORKSPACE}"
+
+      - name: Checkout repository
+        uses: actions/checkout@v5
 
       - name: Validate package
         shell: bash
