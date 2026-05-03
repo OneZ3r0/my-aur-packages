@@ -50,7 +50,7 @@ jobs:
       image: archlinux:latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: main
           fetch-depth: 0
@@ -77,18 +77,21 @@ jobs:
 
       - name: Commit generated files
         shell: bash
-        working-directory: ${{ github.workspace }}
         run: |
           set -euo pipefail
-          if git diff --quiet; then
+
+          repo_dir="${GITHUB_WORKSPACE:?}"
+          git -C "${repo_dir}" rev-parse --show-toplevel >/dev/null
+
+          if git -C "${repo_dir}" diff --quiet; then
             exit 0
           fi
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add README.md pkgs/*/.SRCINFO
-          git commit -m "chore: sync generated metadata [skip aur-sync-self]"
-          git push origin HEAD:main
+          git -C "${repo_dir}" config user.name "github-actions[bot]"
+          git -C "${repo_dir}" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "${repo_dir}" add README.md "pkgs/*/.SRCINFO"
+          git -C "${repo_dir}" commit -m "chore: sync generated metadata [skip aur-sync-self]"
+          git -C "${repo_dir}" push origin HEAD:main
 
   publish:
     needs:
