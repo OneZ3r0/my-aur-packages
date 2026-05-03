@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import os
 import shutil
+import shlex
 import subprocess
+import sys
 import tempfile
+import urllib.parse
+import urllib.request
 
 from aur_repo.config import PackageConfig, RepoConfig
 from aur_repo.readme import parse_srcinfo
@@ -24,14 +29,26 @@ def _run(
     env: dict[str, str] | None = None,
     check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    result = subprocess.run(
         args,
         cwd=cwd,
         env=env,
-        check=check,
+        check=False,
         text=True,
         capture_output=True,
     )
+    if check and result.returncode != 0:
+        print(f"command failed: {shlex.join(args)}", file=sys.stderr)
+        if cwd is not None:
+            print(f"cwd: {cwd}", file=sys.stderr)
+        if result.stdout:
+            print("stdout:", file=sys.stderr)
+            print(result.stdout, file=sys.stderr, end="" if result.stdout.endswith("\n") else "\n")
+        if result.stderr:
+            print("stderr:", file=sys.stderr)
+            print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n")
+        result.check_returncode()
+    return result
 
 
 def _prepare_ssh() -> dict[str, str]:
@@ -97,6 +114,19 @@ def _package_version(package: PackageConfig) -> str:
     return f"{data['pkgver'][0]}-{data['pkgrel'][0]}"
 
 
+def _aur_package_exists(package_name: str) -> bool:
+    query = urllib.parse.urlencode(
+        {
+            "v": "5",
+            "type": "info",
+            "arg[]": package_name,
+        }
+    )
+    with urllib.request.urlopen(f"https://aur.archlinux.org/rpc?{query}", timeout=15) as response:
+        data = json.load(response)
+    return int(data.get("resultcount", 0)) > 0
+
+
 def publish_package(config: RepoConfig, package_name: str) -> bool:
     package = config.package_map().get(package_name)
     if package is None:
@@ -123,6 +153,15 @@ def publish_package(config: RepoConfig, package_name: str) -> bool:
         )
         if fetch.returncode == 0:
             _run(["git", "reset", "--hard", "FETCH_HEAD"], cwd=repo_dir)
+        elif _aur_package_exists(package.name):
+            print(f"failed to fetch existing AUR package: {package.name}", file=sys.stderr)
+            if fetch.stdout:
+                print("stdout:", file=sys.stderr)
+                print(fetch.stdout, file=sys.stderr, end="" if fetch.stdout.endswith("\n") else "\n")
+            if fetch.stderr:
+                print("stderr:", file=sys.stderr)
+                print(fetch.stderr, file=sys.stderr, end="" if fetch.stderr.endswith("\n") else "\n")
+            fetch.check_returncode()
 
         _sync_package_files(config, package, repo_dir)
 
