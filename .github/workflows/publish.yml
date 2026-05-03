@@ -58,7 +58,7 @@ jobs:
           chown -R builder:builder "${GITHUB_WORKSPACE}"
 
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: main
           fetch-depth: 0
@@ -81,6 +81,7 @@ jobs:
           set -euo pipefail
 
           repo_dir="${GITHUB_WORKSPACE:?}"
+          git config --global --add safe.directory "${repo_dir}"
           git -C "${repo_dir}" rev-parse --show-toplevel >/dev/null
 
           if git -C "${repo_dir}" diff --quiet; then
