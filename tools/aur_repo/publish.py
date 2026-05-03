@@ -64,6 +64,9 @@ def _prepare_ssh() -> dict[str, str]:
     key_path.chmod(0o600)
     known_hosts_path.chmod(0o600)
 
+    fingerprint = _run(["ssh-keygen", "-lf", str(key_path)])
+    print(f"AUR SSH key fingerprint: {fingerprint.stdout.strip()}", file=sys.stderr)
+
     env = os.environ.copy()
     env["GIT_SSH_COMMAND"] = (
         f"ssh -i {key_path} "
