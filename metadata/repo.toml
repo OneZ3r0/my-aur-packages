@@ -9,6 +9,11 @@ path = "pkgs/gaomontablet-m5-driver"
 state = "published"
 
 [[packages]]
+name = "niri-shm-sharing"
+path = "pkgs/niri-shm-sharing"
+state = "published"
+
+[[packages]]
 name = "yakit-bin"
 path = "pkgs/yakit-bin"
 state = "published"

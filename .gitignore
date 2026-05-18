@@ -10,3 +10,5 @@ pkgs/**/*.rpm
 pkgs/**/*.tar
 pkgs/**/*.tar.*
 pkgs/**/*.zip
+
+PLAN.md
